@@ -36,7 +36,6 @@ namespace rmw_fastrtps_cpp
 
             typedef struct RequestBuffer
             {
-                eprosima::rpc::protocol::dds::rpc::RequestHeader header;
                 uint32_t length;
                 char *pointer;
             } Buffer;
@@ -66,7 +65,6 @@ namespace rmw_fastrtps_cpp
 
             typedef struct ResponseBuffer
             {
-                eprosima::rpc::protocol::dds::rpc::ReplyHeader header;
                 uint32_t length;
                 char *pointer;
             } Buffer;

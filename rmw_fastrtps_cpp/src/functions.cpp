@@ -27,13 +27,6 @@
 #include "fastrtps/rtps/history/ReaderHistory.h"
 /**  End include  **/
 
-#include <rpcdds/transports/dds/RTPSProxyTransport.h>
-#include <rpcdds/transports/dds/RTPSServerTransport.h>
-#include <rpcdds/transports/dds/components/RTPSProxyProcedureEndpoint.h>
-#include <rpcdds/transports/dds/components/RTPSServerProcedureEndpoint.h>
-#include <rpcdds/strategies/SingleThreadStrategy.h>
-#include <rpcdds/transports/dds/RTPSAsyncTask.h>
-
 #include <cassert>
 #include <mutex>
 #include <condition_variable>
@@ -45,10 +38,8 @@ class ClientListener;
 
 typedef struct CustomClientInfo
 {
-    eprosima::rpc::transport::dds::RTPSProxyTransport *transport_;
     rmw_fastrtps_cpp::RequestTypeSupport *request_type_support_;
     rmw_fastrtps_cpp::ResponseTypeSupport *response_type_support_;
-    eprosima::rpc::transport::dds::RTPSProxyProcedureEndpoint *topic_endpoint_;
     ClientListener *listener_;
 } CustomClientInfo;
 
@@ -125,34 +116,6 @@ class ClientListener
         std::condition_variable *conditionVariable_;
 };
 
-
-class AsyncTask : public eprosima::rpc::transport::dds::RTPSAsyncTask
-{
-    public:
-
-        AsyncTask(CustomClientInfo *info) :
-            info_(info),
-            buffer_(static_cast<rmw_fastrtps_cpp::ResponseTypeSupport::ResponseBuffer*>(info->response_type_support_->createData()))
-    {
-    }
-
-        virtual ~AsyncTask(){}
-
-        virtual void execute()
-        {
-            info_->listener_->onNewResponse(buffer_);
-        }
-
-        virtual void on_exception(const eprosima::rpc::exception::SystemException &ex){}
-
-        virtual void* getReplyInstance() { return buffer_; }
-
-    private:
-
-        CustomClientInfo *info_;
-
-        rmw_fastrtps_cpp::ResponseTypeSupport::ResponseBuffer *buffer_;
-};
 
 extern "C"
 {
@@ -536,12 +499,8 @@ extern "C"
 
     typedef struct CustomServiceInfo
     {
-        eprosima::rpc::transport::dds::RTPSServerTransport *transport_;
-        eprosima::rpc::strategy::SingleThreadStrategy *strategy_;
-        rmw_fastrtps_cpp::Protocol *protocol_;
         rmw_fastrtps_cpp::RequestTypeSupport *request_type_support_;
         rmw_fastrtps_cpp::ResponseTypeSupport *response_type_support_;
-        eprosima::rpc::transport::dds::RTPSServerProcedureEndpoint *topic_endpoint_;
         ServiceListener *listener_;
     } CustomServiceInfo;
 
@@ -646,23 +605,8 @@ extern "C"
         info->request_type_support_ = new rmw_fastrtps_cpp::RequestTypeSupport(members);
         info->response_type_support_ = new rmw_fastrtps_cpp::ResponseTypeSupport(members);
 
-        info->transport_  = new eprosima::rpc::transport::dds::RTPSProxyTransport(participant, service_name, service_name);
-        info->transport_->initialize();
-
         Domain::registerType(participant, info->request_type_support_);
         Domain::registerType(participant, info->response_type_support_);
-
-        //TODO Change "Prueba"
-        info->topic_endpoint_ = dynamic_cast<eprosima::rpc::transport::dds::RTPSProxyProcedureEndpoint*>(info->transport_->createProcedureEndpoint("Prueba",
-                    info->request_type_support_->getName(),
-                    info->request_type_support_->getName(),
-                    info->response_type_support_->getName(),
-                    info->response_type_support_->getName(),
-                    (eprosima::rpc::transport::dds::RTPSTransport::Create_data)rmw_fastrtps_cpp::ResponseTypeSupport::create_data,
-                    (eprosima::rpc::transport::dds::RTPSTransport::Copy_data)rmw_fastrtps_cpp::ResponseTypeSupport::copy_data,
-                    (eprosima::rpc::transport::dds::RTPSTransport::Destroy_data)rmw_fastrtps_cpp::ResponseTypeSupport::delete_data,
-                    NULL,
-                    info->response_type_support_->m_typeSize));
 
         info->listener_ = new ClientListener(info);
 
@@ -696,25 +640,6 @@ extern "C"
 
         if(info->request_type_support_->serializeROSmessage(ros_request, buffer))
         {
-            AsyncTask *task = new AsyncTask(info);
-            eprosima::rpc::ReturnMessage retcode = info->topic_endpoint_->send_async(buffer, task);
-
-            switch (retcode)
-            {
-                case eprosima::rpc::OK:
-                    returnedValue = RMW_RET_OK;
-                    *sequence_id = ((int64_t)buffer->header.requestId().sequence_number().high()) << 32 | buffer->header.requestId().sequence_number().low();
-                    break;
-                case eprosima::rpc::CLIENT_INTERNAL_ERROR:
-                    rmw_set_error_string("cannot send the request");
-                    break;
-                case eprosima::rpc::SERVER_NOT_FOUND:
-                    rmw_set_error_string("cannot connect to the server");
-                    break;
-                default:
-                    rmw_set_error_string("error sending the request");
-                    break;
-            }
         }
         else
             rmw_set_error_string("cannot serialize data");
@@ -753,12 +678,6 @@ extern "C"
 
             // Get header
             rmw_request_id_t &req_id = *(static_cast<rmw_request_id_t*>(ros_request_header));
-            memcpy(req_id.writer_guid, buffer->header.requestId().writer_guid().guidPrefix(), 12);
-            req_id.writer_guid[12] = buffer->header.requestId().writer_guid().entityId().entityKey()[0];
-            req_id.writer_guid[13] = buffer->header.requestId().writer_guid().entityId().entityKey()[1];
-            req_id.writer_guid[14] = buffer->header.requestId().writer_guid().entityId().entityKey()[2];
-            req_id.writer_guid[15] = buffer->header.requestId().writer_guid().entityId().entityKind();
-            req_id.sequence_number = ((int64_t)buffer->header.requestId().sequence_number().high()) << 32 | buffer->header.requestId().sequence_number().low();
 
             info->request_type_support_->deleteData(buffer);
 
@@ -797,8 +716,6 @@ extern "C"
         {
             info->response_type_support_->deserializeROSmessage(buffer, ros_response);
 
-            req_id.sequence_number = ((int64_t)buffer->header.relatedRequestId().sequence_number().high()) << 32 | buffer->header.relatedRequestId().sequence_number().low();
-
             *taken = true;
 
             info->request_type_support_->deleteData(buffer);
@@ -834,15 +751,6 @@ extern "C"
 
             //Set header
             rmw_request_id_t &req_id = *(static_cast<rmw_request_id_t*>(ros_request_header));
-            memcpy(buffer->header.relatedRequestId().writer_guid().guidPrefix(), req_id.writer_guid, 12);
-            buffer->header.relatedRequestId().writer_guid().entityId().entityKey()[0] = req_id.writer_guid[12];
-            buffer->header.relatedRequestId().writer_guid().entityId().entityKey()[1] = req_id.writer_guid[13];
-            buffer->header.relatedRequestId().writer_guid().entityId().entityKey()[2] = req_id.writer_guid[14];
-            buffer->header.relatedRequestId().writer_guid().entityId().entityKind() = req_id.writer_guid[15];
-            buffer->header.relatedRequestId().sequence_number().high((int32_t)((req_id.sequence_number & 0xFFFFFFFF00000000) >> 32));
-            buffer->header.relatedRequestId().sequence_number().low((int32_t)(req_id.sequence_number & 0xFFFFFFFF));
-
-            info->topic_endpoint_->sendReply(buffer);
 
 
             returnedValue = RMW_RET_OK;
@@ -894,30 +802,10 @@ extern "C"
         info->request_type_support_ = new rmw_fastrtps_cpp::RequestTypeSupport(members);
         info->response_type_support_ = new rmw_fastrtps_cpp::ResponseTypeSupport(members);
 
-        info->strategy_ = new eprosima::rpc::strategy::SingleThreadStrategy();
-        info->protocol_ = new rmw_fastrtps_cpp::Protocol(info);
-        info->transport_  = new eprosima::rpc::transport::dds::RTPSServerTransport(participant, service_name, service_name);
-        info->transport_->setStrategy(*info->strategy_);
-        info->transport_->linkProtocol(*info->protocol_);
-        info->transport_->initialize();
-
         Domain::registerType(participant, info->request_type_support_);
         Domain::registerType(participant, info->response_type_support_);
 
-        //TODO Change "Prueba"
-        info->topic_endpoint_ = dynamic_cast<eprosima::rpc::transport::dds::RTPSServerProcedureEndpoint*>(info->transport_->createProcedureEndpoint("Prueba",
-                    info->response_type_support_->getName(),
-                    info->response_type_support_->getName(),
-                    info->request_type_support_->getName(),
-                    info->request_type_support_->getName(),
-                    (eprosima::rpc::transport::dds::RTPSTransport::Create_data)rmw_fastrtps_cpp::RequestTypeSupport::create_data,
-                    (eprosima::rpc::transport::dds::RTPSTransport::Copy_data)rmw_fastrtps_cpp::RequestTypeSupport::copy_data,
-                    (eprosima::rpc::transport::dds::RTPSTransport::Destroy_data)rmw_fastrtps_cpp::RequestTypeSupport::delete_data,
-                    serve,
-                    info->request_type_support_->m_typeSize));
-
         info->listener_ = new ServiceListener(info);
-        info->transport_->run();
 
         rmw_service_t *service = new rmw_service_t; 
         service->implementation_identifier = eprosima_fastrtps_identifier;

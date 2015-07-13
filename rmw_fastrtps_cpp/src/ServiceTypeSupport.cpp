@@ -17,7 +17,6 @@ RequestTypeSupport::RequestTypeSupport(const rosidl_typesupport_introspection_cp
     members_ = members->request_members_;
     std::string name = std::string(members->package_name_) + "_" + members->service_name_ + "_Request";
     setName(strdup(name.c_str()));
-    m_typeSize = eprosima::rpc::protocol::dds::rpc::RequestHeader::getMaxCdrSerializedSize(0);
     m_typeSize += calculateMaxSerializedSize(members_, m_typeSize);
 }
 
@@ -31,7 +30,6 @@ bool RequestTypeSupport::serialize(void *data, SerializedPayload_t *payload)
     eprosima::fastcdr::Cdr ser(fastbuffer);
 
     // TODO First version. Review cause the alignment.
-    ser << buffer->header;
     memcpy(ser.getCurrentPosition(), buffer->pointer, buffer->length);
     payload->length = ser.getSerializedDataLength() + buffer->length;
     return true;
@@ -47,7 +45,6 @@ bool RequestTypeSupport::deserialize(SerializedPayload_t *payload, void *data)
     eprosima::fastcdr::Cdr deser(fastbuffer);
 
     // TODO First version. Review cause the alignment.
-    deser >> buffer->header;
     buffer->length = payload->length - deser.getSerializedDataLength();
     memcpy(buffer->pointer, deser.getCurrentPosition(), buffer->length);
     return true;
@@ -118,7 +115,6 @@ void RequestTypeSupport::delete_data(void *data)
 
 void RequestTypeSupport::copy_data(RequestBuffer *dst, const RequestBuffer *src)
 {
-    dst->header = src->header;
     dst->length = src->length;
     memcpy(dst->pointer, src->pointer, src->length);
 }
@@ -129,7 +125,6 @@ ResponseTypeSupport::ResponseTypeSupport(const rosidl_typesupport_introspection_
     members_ = members->response_members_;
     std::string name = std::string(members->package_name_) + "_" + members->service_name_ + "_Reply";
     setName(strdup(name.c_str()));
-    m_typeSize = eprosima::rpc::protocol::dds::rpc::ReplyHeader::getMaxCdrSerializedSize(0);
     m_typeSize += calculateMaxSerializedSize(members_, m_typeSize);
 }
 
@@ -142,7 +137,6 @@ bool ResponseTypeSupport::serialize(void *data, SerializedPayload_t *payload)
     eprosima::fastcdr::FastBuffer fastbuffer(reinterpret_cast<char*>(payload->data), m_typeSize);
     eprosima::fastcdr::Cdr ser(fastbuffer);
 
-    ser << buffer->header;
     memcpy(ser.getCurrentPosition(), buffer->pointer, buffer->length);
     payload->length = ser.getSerializedDataLength() + buffer->length;
     return true;
@@ -158,7 +152,6 @@ bool ResponseTypeSupport::deserialize(SerializedPayload_t *payload, void *data)
     eprosima::fastcdr::Cdr deser(fastbuffer);
 
     // TODO First version. Review cause the alignment.
-    deser >> buffer->header;
     buffer->length = payload->length - deser.getSerializedDataLength();
     memcpy(buffer->pointer, deser.getCurrentPosition(), buffer->length);
     return true;
@@ -229,7 +222,6 @@ void ResponseTypeSupport::delete_data(void *data)
 
 void ResponseTypeSupport::copy_data(ResponseBuffer *dst, const ResponseBuffer *src)
 {
-    dst->header = src->header;
     dst->length = src->length;
     memcpy(dst->pointer, src->pointer, src->length);
 }
