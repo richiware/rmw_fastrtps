@@ -3,10 +3,6 @@
 
 #include "TypeSupport.h"
 
-#include <rpcdds/protocols/dds/MessageHeader.h>
-#include <rpcdds/protocols/Protocol.h>
-
-
 struct CustomServiceInfo;
 
 namespace rmw_fastrtps_cpp
@@ -87,21 +83,7 @@ namespace rmw_fastrtps_cpp
 
             static void copy_data(ResponseBuffer *dst, const ResponseBuffer *src);
     };
-
-    class Protocol : public eprosima::rpc::protocol::Protocol
-    {
-        public:
-
-            Protocol(CustomServiceInfo *info) : info_(info) {}
-
-            struct CustomServiceInfo* getInfo() const { return info_; }
-
-        private:
-
-            bool setTransport(eprosima::rpc::transport::Transport&) {}
-
-            struct CustomServiceInfo *info_;
-    };
 }
+
 
 #endif // _RMW_FASTRTPS_CPP_SERVICETYPESUPPORT_H_

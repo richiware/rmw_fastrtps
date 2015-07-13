@@ -762,18 +762,6 @@ extern "C"
         return returnedValue;
     }
 
-    void serve(eprosima::rpc::protocol::Protocol &protocol, void *data,
-            eprosima::rpc::transport::Endpoint *endpoint)
-    {
-        assert(data);
-        rmw_fastrtps_cpp::Protocol &proto = dynamic_cast<rmw_fastrtps_cpp::Protocol&>(protocol);
-        ServiceListener *listener = proto.getInfo()->listener_;
-        rmw_fastrtps_cpp::RequestTypeSupport::RequestBuffer *src = static_cast<rmw_fastrtps_cpp::RequestTypeSupport::RequestBuffer*>(data);
-        rmw_fastrtps_cpp::RequestTypeSupport::RequestBuffer *dst = static_cast<rmw_fastrtps_cpp::RequestTypeSupport::RequestBuffer*>(proto.getInfo()->request_type_support_->createData());
-        rmw_fastrtps_cpp::RequestTypeSupport::copy_data(dst, src);
-        listener->onNewRequest(dst);
-    }
-
     rmw_service_t *rmw_create_service(const rmw_node_t *node,
             const rosidl_service_type_support_t *type_support,
             const char *service_name)
