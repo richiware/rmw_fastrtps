@@ -14,6 +14,19 @@
 #include <fastrtps/subscriber/SampleInfo.h>
 #include <fastrtps/attributes/SubscriberAttributes.h>
 
+/**  New include  **/
+#include <fastrtps/rtps/reader/RTPSReader.h>
+#include <fastrtps/rtps/participant/RTPSParticipant.h>
+#include <fastrtps/rtps/RTPSDomain.h>
+#include <fastrtps/rtps/reader/ReaderListener.h>
+
+#include <fastrtps/rtps/attributes/RTPSParticipantAttributes.h>
+#include <fastrtps/rtps/attributes/ReaderAttributes.h>
+#include <fastrtps/rtps/attributes/HistoryAttributes.h>
+
+#include "fastrtps/rtps/history/ReaderHistory.h"
+/**  End include  **/
+
 #include <rpcdds/transports/dds/RTPSProxyTransport.h>
 #include <rpcdds/transports/dds/RTPSServerTransport.h>
 #include <rpcdds/transports/dds/components/RTPSProxyProcedureEndpoint.h>
@@ -159,12 +172,10 @@ extern "C"
     {
         assert(name);
 
-        ParticipantAttributes participantParam;
-        participantParam.rtps.builtin.domainId = 0;
-        participantParam.rtps.builtin.leaseDuration = c_TimeInfinite;
-        participantParam.rtps.setName(name);
-
-        Participant *participant = Domain::createParticipant(participantParam);
+	RTPSParticipantAttributes PParam;
+        PParam.builtin.use_SIMPLE_RTPSParticipantDiscoveryProtocol = false;
+        PParam.builtin.use_WriterLivelinessProtocol = false;
+        RTPSParticipant *participant = RTPSDomain::createParticipant(PParam);
 
         if(!participant)
         {
@@ -208,7 +219,7 @@ extern "C"
 
         CustomPublisherInfo *info = new CustomPublisherInfo();
 
-        const rosidl_typesupport_introspection_cpp::MessageMembers *members = static_cast<const rosidl_typesupport_introspection_cpp::MessageMembers*>(type_support->data);
+        /*const rosidl_typesupport_introspection_cpp::MessageMembers *members = static_cast<const rosidl_typesupport_introspection_cpp::MessageMembers*>(type_support->data);
         info->type_support_ = new rmw_fastrtps_cpp::MessageTypeSupport(members);
 
         Domain::registerType(participant, info->type_support_);
@@ -224,7 +235,7 @@ extern "C"
         {
             rmw_set_error_string("create_publisher() could not create publisher");
             return NULL;
-        }
+        }*/
 
         rmw_publisher_t *rmw_publisher = new rmw_publisher_t;
         rmw_publisher->implementation_identifier = eprosima_fastrtps_identifier;
@@ -270,33 +281,35 @@ extern "C"
 
     typedef struct CustomSubscriberInfo
     {
-        Subscriber *subscriber_;
+	    ReaderHistory *history_;
+        RTPSReader *reader_;
         SubListener *listener_;
         rmw_fastrtps_cpp::MessageTypeSupport *type_support_;
     } CustomSubscriberInfo;
 
-    class SubListener : public SubscriberListener
+    class SubListener : public ReaderListener
     {
         public:
 
-            SubListener(CustomSubscriberInfo *info) : info_(info), hasData_(false),
+            SubListener(CustomSubscriberInfo *info) : info_(info), hasData_(0),
             conditionMutex_(NULL), conditionVariable_(NULL) {}
 
-            void onSubscriptionMatched(Subscriber *sub, MatchingInfo &info) {}
-
-            void onNewDataMessage(Subscriber *sub)
+            void onNewCacheChangeAdded(RTPSReader *reader, const CacheChange_t* const change)
             {
                 std::lock_guard<std::mutex> lock(internalMutex_);
 
-                if(conditionMutex_ != NULL)
+                if(change->kind == ALIVE)
                 {
-                    std::unique_lock<std::mutex> clock(*conditionMutex_);
-                    hasData_ = true;
-                    clock.unlock();
-                    conditionVariable_->notify_one();
+                    if(conditionMutex_ != NULL)
+                    {
+                        std::unique_lock<std::mutex> clock(*conditionMutex_);
+                        hasData_++;
+                        clock.unlock();
+                        conditionVariable_->notify_one();
+                    }
+                    else
+                        hasData_++;
                 }
-                else
-                    hasData_ = true;
 
             }
 
@@ -316,21 +329,22 @@ extern "C"
 
             bool hasData()
             {
-                return hasData_;
+                return hasData_ > 0;
             }
 
             bool getHasData()
             {
-                bool ret = hasData_;
-                hasData_ = false;
-                return ret;
+                int ret = hasData_;
+                if(hasData_ > 0)
+                    hasData_--;
+                return ret > 0;
             }
 
         private:
 
             CustomSubscriberInfo *info_;
             std::mutex internalMutex_;
-            bool hasData_;
+            int hasData_;
             std::mutex *conditionMutex_;
             std::condition_variable *conditionVariable_;
     };
@@ -348,7 +362,7 @@ extern "C"
             return NULL;
         }
 
-        Participant *participant = static_cast<Participant*>(node->data);
+        RTPSParticipant *participant = static_cast<RTPSParticipant*>(node->data);
 
         if(strcmp(type_support->typesupport_identifier, rosidl_typesupport_introspection_cpp::typesupport_introspection_identifier) != 0)
         {
@@ -361,17 +375,22 @@ extern "C"
         const rosidl_typesupport_introspection_cpp::MessageMembers *members = static_cast<const rosidl_typesupport_introspection_cpp::MessageMembers*>(type_support->data);
         info->type_support_ = new rmw_fastrtps_cpp::MessageTypeSupport(members);
 
-        Domain::registerType(participant, info->type_support_);
+        HistoryAttributes hatt;
+        hatt.payloadMaxSize = 255;
+        info->history_ = new ReaderHistory(hatt);
 
-        SubscriberAttributes subscriberParam;
-        subscriberParam.topic.topicKind = NO_KEY;
-        subscriberParam.topic.topicDataType = std::string(members->package_name_) + "::dds_::" + members->message_name_ + "_";
-        subscriberParam.topic.topicName = topic_name;
+        //CREATE READER
+        ReaderAttributes ratt;
+        Locator_t loc;
+        std::string ip("239.255.0.1");
+        loc.set_IP4_address(ip);
+        loc.port = 7400;
+        ratt.endpoint.multicastLocatorList.push_back(loc);
 
         info->listener_ = new SubListener(info);
-        info->subscriber_ = Domain::createSubscriber(participant, subscriberParam, info->listener_);
+        info->reader_ = RTPSDomain::createRTPSReader(participant,ratt,info->history_,info->listener_);
 
-        if(!info->subscriber_)
+        if(!info->reader_)
         {
             rmw_set_error_string("create_subscriber() could not create subscriber");
             return NULL;
@@ -401,19 +420,21 @@ extern "C"
         CustomSubscriberInfo *info = (CustomSubscriberInfo*)subscription->data;
         assert(info);
 
-        rmw_fastrtps_cpp::MessageTypeSupport::Buffer *buffer = (rmw_fastrtps_cpp::MessageTypeSupport::Buffer*)info->type_support_->createData();
-        SampleInfo_t sinfo;
+        rmw_fastrtps_cpp::MessageTypeSupport::Buffer buffer;
+        CacheChange_t *change;
+        WriterProxy *wp;
 
-        if(info->subscriber_->takeNextData(buffer, &sinfo))
+        if(info->reader_->nextUntakenCache(&change, &wp))
         {
-            if(sinfo.sampleKind == ALIVE)
+            change->isRead = true;
+            if(change->kind == ALIVE)
             {
-                info->type_support_->deserializeROSmessage(buffer, ros_message);
+                buffer.pointer = (char*)change->serializedPayload.data;
+                buffer.length = change->serializedPayload.length;
+                info->type_support_->deserializeROSmessage(&buffer, ros_message);
                 *taken = true;
             }
         }
-
-        info->type_support_->deleteData(buffer);
 
         return RMW_RET_OK;
     }
