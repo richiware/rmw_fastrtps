@@ -397,6 +397,8 @@ extern "C"
                 info->type_support_->deserializeROSmessage(&buffer, ros_message);
                 *taken = true;
             }
+
+	    info->history_->remove_change(change);
         }
 
         return RMW_RET_OK;
