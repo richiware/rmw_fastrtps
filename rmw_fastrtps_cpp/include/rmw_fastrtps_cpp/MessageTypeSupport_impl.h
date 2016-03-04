@@ -12,7 +12,8 @@
 
 using namespace rmw_fastrtps_cpp;
 
-MessageTypeSupport::MessageTypeSupport(const rosidl_typesupport_introspection_cpp::MessageMembers *members)
+template <typename MembersType>
+MessageTypeSupport<MembersType>::MessageTypeSupport(const MembersType *members)
 {
     assert(members);
     this->members_ = members;

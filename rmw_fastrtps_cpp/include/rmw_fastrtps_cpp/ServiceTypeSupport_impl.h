@@ -10,11 +10,13 @@
 
 using namespace rmw_fastrtps_cpp;
 
-ServiceTypeSupport::ServiceTypeSupport()
+template <typename MembersType>
+ServiceTypeSupport<MembersType>::ServiceTypeSupport()
 {
 }
 
-RequestTypeSupport::RequestTypeSupport(const rosidl_typesupport_introspection_cpp::ServiceMembers *members)
+template <typename ServiceMembersType, typename MessageMembersType>
+RequestTypeSupport<ServiceMembersType, MessageMembersType>::RequestTypeSupport(const ServiceMembersType *members)
 {
     assert(members);
     this->members_ = members->request_members_;
@@ -32,7 +34,8 @@ RequestTypeSupport::RequestTypeSupport(const rosidl_typesupport_introspection_cp
         this->m_typeSize = 1;
 }
 
-ResponseTypeSupport::ResponseTypeSupport(const rosidl_typesupport_introspection_cpp::ServiceMembers *members)
+template <typename ServiceMembersType, typename MessageMembersType>
+ResponseTypeSupport<ServiceMembersType, MessageMembersType>::ResponseTypeSupport(const ServiceMembersType *members)
 {
     assert(members);
     this->members_ = members->response_members_;
