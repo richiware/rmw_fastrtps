@@ -22,9 +22,6 @@ include_directories(include)
 
 add_library(rmw_fastrtps_cpp SHARED
         src/functions.cpp
-        src/TypeSupport.cpp
-        src/MessageTypeSupport.cpp
-        src/ServiceTypeSupport.cpp
 )
 target_link_libraries(rmw_fastrtps_cpp
 		fastcdr fastrtps)

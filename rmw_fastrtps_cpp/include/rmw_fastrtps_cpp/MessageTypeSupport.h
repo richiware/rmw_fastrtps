@@ -18,4 +18,6 @@ namespace rmw_fastrtps_cpp
     };
 }
 
+#include "MessageTypeSupport_impl.h"
+
 #endif // _RMW_FASTRTPS_CPP_MESSAGETYPESUPPORT_H_

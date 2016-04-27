@@ -29,4 +29,6 @@ namespace rmw_fastrtps_cpp
     };
 }
 
+#include "ServiceTypeSupport_impl.h"
+
 #endif // _RMW_FASTRTPS_CPP_SERVICETYPESUPPORT_H_

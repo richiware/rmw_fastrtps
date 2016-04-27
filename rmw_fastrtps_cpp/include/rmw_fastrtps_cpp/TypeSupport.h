@@ -55,5 +55,7 @@ namespace rmw_fastrtps_cpp
     };
 }
 
+#include "TypeSupport_impl.h"
+
 #endif // _RMW_FASTRTPS_CPP_TYPESUPPORT_H_
 

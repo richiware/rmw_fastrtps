@@ -1,3 +1,6 @@
+#ifndef _RMW_FASTRTPS_CPP_SERVICETYPESUPPORT_IMPL_H_
+#define _RMW_FASTRTPS_CPP_SERVICETYPESUPPORT_IMPL_H_
+
 #include "rmw_fastrtps_cpp/ServiceTypeSupport.h"
 #include "rosidl_typesupport_introspection_cpp/field_types.hpp"
 
@@ -14,31 +17,33 @@ ServiceTypeSupport::ServiceTypeSupport()
 RequestTypeSupport::RequestTypeSupport(const rosidl_typesupport_introspection_cpp::ServiceMembers *members)
 {
     assert(members);
-    members_ = members->request_members_;
+    this->members_ = members->request_members_;
 
     if(strcmp(members->package_name_, "rcl_interfaces") == 0 && (strcmp(members->service_name_, "SetParameters") == 0 ||
             strcmp(members->service_name_, "SetParametersAtomically") == 0))
-        typeTooLarge_ = true;
+        this->typeTooLarge_ = true;
 
     std::string name = std::string(members->package_name_) + "::srv::dds_::" + members->service_name_ + "_Request_";
-    setName(name.c_str());
+    this->setName(name.c_str());
 
-    if(members_->member_count_ != 0)
-        m_typeSize = static_cast<uint32_t>(calculateMaxSerializedSize(members_, 0));
+    if(this->members_->member_count_ != 0)
+        this->m_typeSize = static_cast<uint32_t>(this->calculateMaxSerializedSize(this->members_, 0));
     else
-        m_typeSize = 1;
+        this->m_typeSize = 1;
 }
 
 ResponseTypeSupport::ResponseTypeSupport(const rosidl_typesupport_introspection_cpp::ServiceMembers *members)
 {
     assert(members);
-    members_ = members->response_members_;
+    this->members_ = members->response_members_;
 
     std::string name = std::string(members->package_name_) + "::srv::dds_::" + members->service_name_ + "_Response_";
-    setName(name.c_str());
+    this->setName(name.c_str());
 
-    if(members_->member_count_ != 0)
-        m_typeSize = static_cast<uint32_t>(calculateMaxSerializedSize(members_, 0));
+    if(this->members_->member_count_ != 0)
+        this->m_typeSize = static_cast<uint32_t>(this->calculateMaxSerializedSize(this->members_, 0));
     else
-        m_typeSize = 1;
+        this->m_typeSize = 1;
 }
+
+#endif // _RMW_FASTRTPS_CPP_SERVICETYPESUPPORT_IMPL_H_

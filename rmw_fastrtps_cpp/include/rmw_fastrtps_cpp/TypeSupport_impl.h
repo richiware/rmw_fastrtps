@@ -1,3 +1,6 @@
+#ifndef _RMW_FASTRTPS_CPP_TYPESUPPORT_IMPL_H_
+#define _RMW_FASTRTPS_CPP_TYPESUPPORT_IMPL_H_
+
 #include "rmw_fastrtps_cpp/TypeSupport.h"
 #include "rosidl_typesupport_introspection_cpp/field_types.hpp"
 
@@ -709,3 +712,5 @@ bool TypeSupport::deserialize(SerializedPayload_t *payload, void *data)
     memcpy(buffer->pointer, payload->data, payload->length);
     return true;
 }
+
+#endif // _RMW_FASTRTPS_CPP_TYPESUPPORT_IMPL_H_
