@@ -10,10 +10,22 @@
 #include <fastrtps/attributes/ParticipantAttributes.h>
 #include <fastrtps/publisher/Publisher.h>
 #include <fastrtps/attributes/PublisherAttributes.h>
+#include <fastrtps/publisher/PublisherListener.h>
 #include <fastrtps/subscriber/Subscriber.h>
 #include <fastrtps/subscriber/SubscriberListener.h>
 #include <fastrtps/subscriber/SampleInfo.h>
 #include <fastrtps/attributes/SubscriberAttributes.h>
+
+
+
+#include <fastrtps/rtps/RTPSDomain.h>
+#include <fastrtps/rtps/builtin/data/WriterProxyData.h>
+#include <fastrtps/rtps/common/CDRMessage_t.h>
+
+#include <fastrtps/rtps/reader/RTPSReader.h> 
+#include <fastrtps/rtps/reader/StatefulReader.h>
+#include <fastrtps/rtps/reader/ReaderListener.h>
+#include <fastrtps/rtps/builtin/discovery/endpoint/EDPSimple.h>
 
 #include <cassert>
 #include <mutex>
@@ -337,6 +349,28 @@ typedef struct CustomClientResponse
     CustomClientResponse() : buffer_(nullptr) {}
 } CustomClientResponse;
 
+class topicnamesandtypesReaderListener : public ReaderListener {
+	public:
+	topicnamesandtypesReaderListener(){};
+	void onNewCacheChangeAdded(RTPSReader* reader, const CacheChange_t* const change_in){
+		CacheChange_t* change = (CacheChange_t*) change_in;
+		if(change->kind == ALIVE){
+			WriterProxyData proxyData;
+			CDRMessage_t tempMsg;
+			tempMsg.msg_endian = change->serializedPayload.encapsulation == PL_CDR_BE ? BIGEND:LITTLEEND;
+			tempMsg.length = change->serializedPayload.length;
+			memcpy(tempMsg.buffer,change->serializedPayload.data,tempMsg.length);
+			if(proxyData.readFromCDRMessage(&tempMsg)){
+				mapmutex.lock();
+				topicNtypes[proxyData.m_topicName].insert(proxyData.m_typeName);		
+				mapmutex.unlock();
+			}
+		}
+	}
+	std::map<std::string,std::set<std::string>> topicNtypes;
+	std::mutex mapmutex;
+};
+
 class ClientListener : public SubscriberListener
 {
     public:
@@ -438,7 +472,7 @@ struct FastRTPSNodeImpl {
 
 extern "C"
 {
-    const char* const eprosima_fastrtps_identifier = "rmw_fastrtps_cpp";
+    const char* const eprosima_fastrtps_identifier = "fastrtps";
 
     const char* rmw_get_implementation_identifier()
     {
@@ -567,7 +601,7 @@ extern "C"
         eprosima::Log::setVerbosity(eprosima::VERB_ERROR);
 
         ParticipantAttributes participantParam;
-        participantParam.rtps.builtin.domainId = static_cast<uint32_t>(domain_id);
+        participantParam.rtps.builtin.domainId = domain_id;
         participantParam.rtps.builtin.leaseDuration = c_TimeInfinite;
         participantParam.rtps.setName(name);
 
@@ -612,8 +646,25 @@ extern "C"
             return NULL;
         }
         memcpy(const_cast<char *>(node_handle->name), name, strlen(name) + 1);
+	//Add slave Listener to enagle get_topic_names_and_types
+        topicnamesandtypesReaderListener* tnat_1 = new topicnamesandtypesReaderListener();
+	topicnamesandtypesReaderListener* tnat_2 = new topicnamesandtypesReaderListener();
+
+ 	std::pair<StatefulReader*, StatefulReader*> EDPReaders = participant->getEDPReaders();
+	InfectableReaderListener* target1 = static_cast<InfectableReaderListener*>(EDPReaders.first->getListener());
+	target1->attachListener(tnat_1);
+	InfectableReaderListener* target2 = static_cast<InfectableReaderListener*>(EDPReaders.second->getListener());
+	target2->attachListener(tnat_2);
+
+	if( !( target1->hasReaderAttached() & target2->hasReaderAttached() ) ){
+		RMW_SET_ERROR_MSG("Failed to attach ROS related logic to the Participant");
+		goto fail;	
+	}
 
         return node_handle;
+    	fail:
+	return NULL;
+
     }
 
     rmw_ret_t rmw_destroy_node(rmw_node_t * node)
@@ -2108,16 +2159,113 @@ fail:
       const rmw_node_t * node,
       rmw_topic_names_and_types_t * topic_names_and_types)
     {
-        RMW_SET_ERROR_MSG("not implemented");
-        return RMW_RET_ERROR;
+        //safechecks
+	
+	if(!node){
+		RMW_SET_ERROR_MSG("null node handle");
+		return RMW_RET_ERROR;
+	}	
+	if(!topic_names_and_types){
+		RMW_SET_ERROR_MSG("null topics_names_and_types");
+		return RMW_RET_ERROR;
+	}
+	//Get participant pointer from node
+        if(node->implementation_identifier != eprosima_fastrtps_identifier)
+        {
+            RMW_SET_ERROR_MSG("node handle not from this implementation");
+            return RMW_RET_ERROR;
+        }
+
+        Participant *participant = static_cast<Participant*>(node->data);
+
+        //if(strcmp(type_support->typesupport_identifier, rosidl_typesupport_introspection_cpp::typesupport_introspection_identifier) != 0)
+        //{
+        //    RMW_SET_ERROR_MSG("type support not from this implementation");
+        //    return NULL;
+        //}
+
+	//Get and combine info from both Pub and Sub
+	std::pair<StatefulReader*,StatefulReader*> EDPReaders = participant->getEDPReaders();
+	//Access the slave Listeners, which are the ones that have the topicnamesandtypes member
+  	//Get info from publisher and subscriber
+	std::map<std::string,std::set<std::string>> unfiltered_topics; //Combined results from the two lists
+	InfectableReaderListener* target = static_cast<InfectableReaderListener*>(EDPReaders.first->getListener());
+	topicnamesandtypesReaderListener* slave_target = static_cast<topicnamesandtypesReaderListener*>(target->getAttachedListener());
+	slave_target->mapmutex.lock();
+	for(auto it : slave_target->topicNtypes){
+		for(auto & itt: it.second){
+			unfiltered_topics[it.first].insert(itt);
+		}
+	}
+	slave_target->mapmutex.unlock();
+	target = static_cast<InfectableReaderListener*>(EDPReaders.second->getListener());
+ 	slave_target = static_cast<topicnamesandtypesReaderListener*>(target->getAttachedListener());
+	slave_target->mapmutex.lock();
+	for(auto it : slave_target->topicNtypes){
+		for(auto & itt: it.second){
+			unfiltered_topics[it.first].insert(itt);
+		}
+	}
+	slave_target->mapmutex.unlock();
+	//Filter duplicates
+	std::map<std::string,std::string> topics;
+	for(auto & it : unfiltered_topics){
+		if(it.second.size() == 1)	topics[it.first] = *it.second.begin();
+	}	
+	//Copy data to results handle
+	if(topics.size() > 0){
+		//Alloc memory for pointers to instances
+		topic_names_and_types->topic_names = static_cast<char **>(rmw_allocate(sizeof(char*) * topics.size()));
+		if(!topic_names_and_types->topic_names){
+			RMW_SET_ERROR_MSG("Failed to allocate memory");
+			return RMW_RET_ERROR;
+		}
+		topic_names_and_types->type_names = static_cast<char **>(rmw_allocate(sizeof(char *) * topics.size()));
+		if(!topic_names_and_types->type_names){
+			rmw_free(topic_names_and_types->topic_names);
+			RMW_SET_ERROR_MSG("Failed to allocate memory");
+			return RMW_RET_ERROR;
+		}
+		//Iterate topics for instances
+		int index;
+		topic_names_and_types->topic_count = 0;
+		for(auto it : topics){
+			index = topic_names_and_types->topic_count;
+			//Alloc
+			char *topic_name = strdup(it.first.c_str());
+			if(!topic_name){
+				RMW_SET_ERROR_MSG("Failed to allocate memory");
+				return RMW_RET_ERROR;
+			}
+			char *topic_type = strdup(it.second.c_str());
+			if(!topic_type){
+				rmw_free(topic_name);
+				RMW_SET_ERROR_MSG("Failed to allocate memory");
+				return RMW_RET_ERROR;
+			}
+			//Insert
+			topic_names_and_types->topic_names[index] = topic_name;
+			topic_names_and_types->type_names[index] = topic_type;
+			++topic_names_and_types->topic_count;
+		}
+
+	}
+        return RMW_RET_OK;
+
     }
 
     rmw_ret_t
     rmw_destroy_topic_names_and_types(
       rmw_topic_names_and_types_t * topic_names_and_types)
     {
-        RMW_SET_ERROR_MSG("not implemented");
-        return RMW_RET_ERROR;
+        int cap = topic_names_and_types->topic_count;
+	for(int i=0;i < cap; i++){
+		rmw_free(topic_names_and_types->topic_names[i]);
+		rmw_free(topic_names_and_types->type_names[i]);
+	}	
+	rmw_free(topic_names_and_types->topic_names);
+	rmw_free(topic_names_and_types->type_names);
+        return RMW_RET_OK; 
     }
 
     rmw_ret_t
@@ -2126,8 +2274,26 @@ fail:
       const char * topic_name,
       size_t * count)
     {
-        RMW_SET_ERROR_MSG("not implemented");
-        return RMW_RET_ERROR;
+        char *target_topic = const_cast<char *>(topic_name);
+	//safechecks
+	
+	if(!node){
+		RMW_SET_ERROR_MSG("null node handle");
+		return RMW_RET_ERROR;
+	}	
+	//Get participant pointer from node
+        if(node->implementation_identifier != eprosima_fastrtps_identifier)
+        {
+            RMW_SET_ERROR_MSG("node handle not from this implementation");
+            return RMW_RET_ERROR;
+        }
+
+        Participant *participant = static_cast<Participant*>(node->data);
+
+	*count = participant->get_no_publishers(target_topic);
+
+	return RMW_RET_OK;
+
     }
 
     rmw_ret_t
@@ -2136,8 +2302,26 @@ fail:
       const char * topic_name,
       size_t * count)
     {
-        RMW_SET_ERROR_MSG("not implemented");
-        return RMW_RET_ERROR;
+        char *target_topic = const_cast<char*>(topic_name);
+       	// safechecks
+
+        if(!node){
+          RMW_SET_ERROR_MSG("null node handle");
+          return RMW_RET_ERROR;
+        }
+        //Get participant pointer from node
+        if(node->implementation_identifier != eprosima_fastrtps_identifier)
+        {
+            RMW_SET_ERROR_MSG("node handle not from this implementation");
+            return RMW_RET_ERROR;
+        }
+
+        Participant *participant = static_cast<Participant*>(node->data);
+
+        *count = participant->get_no_subscribers(target_topic);
+
+        return RMW_RET_OK;
+
     }
 
     rmw_ret_t
