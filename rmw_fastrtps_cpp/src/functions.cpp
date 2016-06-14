@@ -716,6 +716,20 @@ extern "C"
             return RMW_RET_ERROR;
         }
 
+	// Dereference and delete the slave listener, in case it exists
+	std::pair<StatefulReader*,StatefulReader*> EDPReaders = participant->getEDPReaders();
+	InfectableReaderListener* target = static_cast<InfectableReaderListener*>(EDPReaders.first->getListener());
+	if(target->hasReaderAttached()){
+		ReaderListener *temp = target->getAttachedListener();
+		target->detachListener();
+		delete(temp);
+	}
+	target = static_cast<InfectableReaderListener*>(EDPReaders.second->getListener());
+	if(target->hasReaderAttached()){
+		temp = target->getAttachedListener();
+		target->detachListener();
+		delete(temp);
+	}
         Domain::removeParticipant(participant);
 
         delete impl;
