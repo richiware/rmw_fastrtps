@@ -726,7 +726,7 @@ extern "C"
 	}
 	target = static_cast<InfectableReaderListener*>(EDPReaders.second->getListener());
 	if(target->hasReaderAttached()){
-		temp = target->getAttachedListener();
+		ReaderListener *temp = target->getAttachedListener();
 		target->detachListener();
 		delete(temp);
 	}
