@@ -2426,14 +2426,13 @@ fail:
 	}
 	slave_target->mapmutex.unlock();
 
-	//get_count
+	//get count
 	auto it = unfiltered_topics.find(topic_name);
 	if(it == unfiltered_topics.end()){
 		*count = 0;
 	}else{
 		*count = it->second.size();
 	}
-
 	return RMW_RET_OK;
 
     }
