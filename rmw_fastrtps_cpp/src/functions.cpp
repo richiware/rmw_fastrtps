@@ -606,6 +606,13 @@ extern "C"
     {
         return RMW_RET_OK;
     }
+    
+    typedef struct CustomParticipantInfo
+    {
+        Participant *participant;
+    	topicnamesandtypesReaderListener *secondarySubListener;
+	topicnamesandtypesReaderListener *secondaryPubListener;
+    } CustomParticipantInfo;
 
     rmw_node_t* rmw_create_node(const char *name, size_t domain_id)
     {
@@ -621,7 +628,7 @@ extern "C"
         participantParam.rtps.setName(name);
 
         Participant *participant = Domain::createParticipant(participantParam);
-
+	CustomParticipantInfo *CustomParticipantInfo_ = new CustomParticipantInfo();
         if(!participant)
         {
             RMW_SET_ERROR_MSG("create_node() could not create participant");
@@ -653,6 +660,7 @@ extern "C"
         node_impl->graph_guard_condition = graph_guard_condition;
         node_handle->data = node_impl;
 
+
         node_handle->name =
             static_cast<const char *>(malloc(sizeof(char) * strlen(name) + 1));
         if (!node_handle->name) {
@@ -671,7 +679,6 @@ extern "C"
 
  	std::pair<StatefulReader*, StatefulReader*> EDPReaders = participant->getEDPReaders();
 	
-
 	if( !( EDPReaders.first->setListener(tnat_1) & EDPReaders.second->setListener(tnat_2) ) ){
 		RMW_SET_ERROR_MSG("Failed to attach ROS related logic to the Participant");
 		goto fail;	
@@ -679,6 +686,9 @@ extern "C"
 
         return node_handle;
     	fail:
+	delete(tnat_1);
+	delete(tnat_2);
+	delete(CustomParticipantInfo_);
 	return NULL;
 
     }
@@ -718,23 +728,15 @@ extern "C"
 
 	// Dereference and delete the slave listener, in case it exists
 	std::pair<StatefulReader*,StatefulReader*> EDPReaders = participant->getEDPReaders();
-	InfectableReaderListener* target = static_cast<InfectableReaderListener*>(EDPReaders.first->getListener());
-	if(target->hasReaderAttached()){
-		ReaderListener *temp = target->getAttachedListener();
-		target->detachListener();
-		delete(temp);
-	}
-	target = static_cast<InfectableReaderListener*>(EDPReaders.second->getListener());
-	if(target->hasReaderAttached()){
-		ReaderListener *temp = target->getAttachedListener();
-		target->detachListener();
-		delete(temp);
-	}
-        Domain::removeParticipant(participant);
+	//Delete the ReaderListenersi
+	EDPReaders.first->setListener(nullptr);
+	delete(CustomParticipantInfo_->secondarySubListener);
+	EDPReaders.second->setListener(nullptr);
+	delete(CustomParticipantInfo_->secondaryPubListener);
+	 
+	Domain::removeParticipant(participant);
 
-        delete impl;
-        node->data = nullptr;
-
+	delete(CustomParticipantInfo_);
         if (node->name) {
             free(const_cast<char *>(node->name));
             node->name = nullptr;
@@ -1032,7 +1034,6 @@ fail:
         }
 
         Participant *participant = impl->participant;
-
         if(
             strcmp(type_support->typesupport_identifier, rosidl_typesupport_introspection_c__identifier) != 0 &&
             strcmp(type_support->typesupport_identifier, rosidl_typesupport_introspection_cpp::typesupport_introspection_identifier) != 0
@@ -1133,6 +1134,8 @@ fail:
 
                 Participant *participant = impl->participant;
                 _unregister_type(participant, info->type_support_, info->typesupport_identifier_);
+                if(Domain::unregisterType(participant, info->type_support_->getName()))
+                    delete info->type_support_;
             }
             delete info;
         }
@@ -1845,7 +1848,6 @@ fail:
         }
 
         Participant *participant = impl->participant;
-
         if(
             strcmp(type_support->typesupport_identifier, rosidl_typesupport_introspection_c__identifier) != 0 &&
             strcmp(type_support->typesupport_identifier, rosidl_typesupport_introspection_cpp::typesupport_introspection_identifier) != 0
@@ -2291,6 +2293,7 @@ fail:
             RMW_SET_ERROR_MSG("node handle not from this implementation");
             return RMW_RET_ERROR;
         }
+	CustomParticipantInfo *CustomParticipantInfo_ = static_cast<CustomParticipantInfo*>(node->data);
 
 	CustomParticipantInfo* impl = static_cast<CustomParticipantInfo*>(node->data);
         Participant *participant = impl->participant;
