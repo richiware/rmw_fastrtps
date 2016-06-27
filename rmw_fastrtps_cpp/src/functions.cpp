@@ -607,13 +607,6 @@ extern "C"
         return RMW_RET_OK;
     }
     
-    typedef struct CustomParticipantInfo
-    {
-        Participant *participant;
-    	topicnamesandtypesReaderListener *secondarySubListener;
-	topicnamesandtypesReaderListener *secondaryPubListener;
-    } CustomParticipantInfo;
-
     rmw_node_t* rmw_create_node(const char *name, size_t domain_id)
     {
         if (!name) {
@@ -628,7 +621,6 @@ extern "C"
         participantParam.rtps.setName(name);
 
         Participant *participant = Domain::createParticipant(participantParam);
-	CustomParticipantInfo *CustomParticipantInfo_ = new CustomParticipantInfo();
         if(!participant)
         {
             RMW_SET_ERROR_MSG("create_node() could not create participant");
@@ -673,8 +665,8 @@ extern "C"
 	topicnamesandtypesReaderListener* tnat_1 = new topicnamesandtypesReaderListener();
 	topicnamesandtypesReaderListener* tnat_2 = new topicnamesandtypesReaderListener();
 
-	CustomParticipantInfo->secondarySubListener = tnat_1;
-	CustomParticipantInfo->secondaryPubListener = tnat_2;
+	node_impl->secondarySubListener = tnat_1;
+	node_impl->secondaryPubListener = tnat_2;
 
 
  	std::pair<StatefulReader*, StatefulReader*> EDPReaders = participant->getEDPReaders();
@@ -688,7 +680,7 @@ extern "C"
     	fail:
 	delete(tnat_1);
 	delete(tnat_2);
-	delete(CustomParticipantInfo_);
+	delete(node_impl);
 	return NULL;
 
     }
@@ -726,17 +718,9 @@ extern "C"
             return RMW_RET_ERROR;
         }
 
-	// Dereference and delete the slave listener, in case it exists
-	std::pair<StatefulReader*,StatefulReader*> EDPReaders = participant->getEDPReaders();
-	//Delete the ReaderListenersi
-	EDPReaders.first->setListener(nullptr);
-	delete(CustomParticipantInfo_->secondarySubListener);
-	EDPReaders.second->setListener(nullptr);
-	delete(CustomParticipantInfo_->secondaryPubListener);
-	 
 	Domain::removeParticipant(participant);
 
-	delete(CustomParticipantInfo_);
+	delete(impl);
         if (node->name) {
             free(const_cast<char *>(node->name));
             node->name = nullptr;
@@ -1134,8 +1118,6 @@ fail:
 
                 Participant *participant = impl->participant;
                 _unregister_type(participant, info->type_support_, info->typesupport_identifier_);
-                if(Domain::unregisterType(participant, info->type_support_->getName()))
-                    delete info->type_support_;
             }
             delete info;
         }
@@ -1526,7 +1508,7 @@ fail:
             return NULL;
         }
 
-        CustomParticipantInfo * impl = static_cast<CustomparticipantInfo *>(node->data);
+        CustomParticipantInfo * impl = static_cast<CustomParticipantInfo *>(node->data);
         if (!impl) {
             RMW_SET_ERROR_MSG("node impl is null");
             return NULL;
@@ -2293,7 +2275,6 @@ fail:
             RMW_SET_ERROR_MSG("node handle not from this implementation");
             return RMW_RET_ERROR;
         }
-	CustomParticipantInfo *CustomParticipantInfo_ = static_cast<CustomParticipantInfo*>(node->data);
 
 	CustomParticipantInfo* impl = static_cast<CustomParticipantInfo*>(node->data);
         Participant *participant = impl->participant;
@@ -2317,7 +2298,7 @@ fail:
 		}
 	}
 	slave_target->mapmutex.unlock();
- 	slave_target = CustomParticipantInfo->secondaryPubListener; 
+ 	slave_target = impl->secondaryPubListener; 
 	slave_target->mapmutex.lock();
 	for(auto it : slave_target->topicNtypes){
 		for(auto & itt: it.second){
@@ -2415,13 +2396,13 @@ fail:
             return RMW_RET_ERROR;
         }
 
-        CustomParticipantInfo* impl = static_cast<CustomparticipantInfo*>(node->data);
+        CustomParticipantInfo* impl = static_cast<CustomParticipantInfo*>(node->data);
 	Participant *participant = impl->participant;
 
 	std::map<std::string,std::set<std::string>>unfiltered_topics;
 	topicnamesandtypesReaderListener* slave_target = impl->secondaryPubListener;
 	slave_target->mapmutex.lock();
-	for(auto it : slave-target->topicNtypes){
+	for(auto it : slave_target->topicNtypes){
 		for(auto & itt: it.second){
 			unfiltered_topics[it.first].insert(itt);
 		}
@@ -2459,13 +2440,13 @@ fail:
             return RMW_RET_ERROR;
         }
 
-        CustomParticipantInfo* impl = static_cast<CustomparticipantInfo*>(node->data);
+        CustomParticipantInfo* impl = static_cast<CustomParticipantInfo*>(node->data);
 	Participant *participant = impl->participant;
 
 	std::map<std::string,std::set<std::string>>unfiltered_topics;
 	topicnamesandtypesReaderListener* slave_target = impl->secondarySubListener;
 	slave_target->mapmutex.lock();
-	for(auto it : slave-target->topicNtypes){
+	for(auto it : slave_target->topicNtypes){
 		for(auto & itt: it.second){
 			unfiltered_topics[it.first].insert(itt);
 		}
@@ -2483,6 +2464,19 @@ fail:
 	return RMW_RET_OK;
 }
 
+rmw_ret_t
+rmw_service_server_is_available(
+	const rmw_node_t *node,
+	const rmw_client_t *client,
+	bool *is_available)
+{
+	(void)node;
+	(void)client;
+	(void)is_available;
+	RMW_SET_ERROR_MSG("not implemented");
+	return RMW_RET_ERROR;
+}
+
 const rmw_guard_condition_t *
 rmw_node_get_graph_guard_condition(const rmw_node_t* node)
 {
@@ -2490,7 +2484,7 @@ rmw_node_get_graph_guard_condition(const rmw_node_t* node)
 	CustomParticipantInfo* impl = static_cast<CustomParticipantInfo*>(node->data);
 	if(!impl){
 		RMW_SET_ERROR_MSG("node impl is null");
-		return null;
+		return NULL;
 	}
 	return impl->graph_guard_condition;
 }
