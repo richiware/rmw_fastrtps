@@ -805,8 +805,8 @@ rmw_publisher_t * rmw_create_publisher(const rmw_node_t * node,
   publisherParam.historyMemoryPolicy = PREALLOCATED_WITH_REALLOC_MEMORY_MODE;
 
   // 1 Heartbeat every 10ms
-  // publisherParam.times.heartbeatPeriod.seconds = 0;
-  // publisherParam.times.heartbeatPeriod.fraction = 42949673;
+  publisherParam.times.heartbeatPeriod.seconds = 0;
+  publisherParam.times.heartbeatPeriod.fraction = 42949673;
 
   // 300000 bytes each 10ms
   // ThroughputControllerDescriptor throughputController{3000000, 10};
