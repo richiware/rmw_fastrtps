@@ -809,7 +809,7 @@ rmw_publisher_t * rmw_create_publisher(const rmw_node_t * node,
   publisherParam.times.heartbeatPeriod.fraction = 42949673;
 
   // 300000 bytes each 10ms
-  ThroughputControllerDescriptor throughputController{3000000, 10};
+  ThroughputControllerDescriptor throughputController {3000000, 10};
   publisherParam.throughputController = throughputController;
 
   if (!get_datawriter_qos(*qos_policies, publisherParam)) {
